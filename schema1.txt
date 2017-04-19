@@ -1,0 +1,42 @@
+CREATE KEYSPACE if not exists valuecache1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}  AND durable_writes = true;
+
+use valuecache1;
+
+drop table if exists values;
+drop aggregate if exists group_and_last;
+drop function if exists state_group_f;
+
+
+create table if not exists values (
+  book text,
+  anchor text,
+  tradeid text,
+  ref int,
+  value double,
+  PRIMARY KEY((book,anchor), ref, tradeid)
+  ) WITH CLUSTERING ORDER BY (ref ASC);
+
+
+truncate values;
+
+
+insert into values (book, anchor, tradeid, ref, value) VALUES ('bookA', '2001-01-01', 'trade1', 1, 42.0);  
+insert into values (book, anchor, tradeid, ref, value) VALUES ('bookA', '2001-01-01', 'trade2', 2, 17.0);  
+insert into values (book, anchor, tradeid, ref, value) VALUES ('bookA', '2001-01-01', 'trade1', 3, 42.5);  
+insert into values (book, anchor, tradeid, ref, value) VALUES ('bookA', '2001-01-01', 'trade2', 4, 17.5);  
+insert into values (book, anchor, tradeid, ref, value) VALUES ('bookA', '2001-01-01', 'trade1', 5, 43.0);  
+
+
+
+CREATE FUNCTION state_group_f ( state map<text, double>, key text, value double )
+CALLED ON NULL INPUT
+RETURNS map<text, double>
+LANGUAGE java AS '
+state.put(key, value); return state; ' ;
+
+CREATE OR REPLACE AGGREGATE group_and_last(text, double) 
+SFUNC state_group_f
+STYPE map<text, double> 
+INITCOND {};
+
+

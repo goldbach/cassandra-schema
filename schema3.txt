@@ -1,0 +1,57 @@
+CREATE KEYSPACE if not exists valuecache3 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}  AND durable_writes = true;
+
+use valuecache3;
+
+drop table if exists values;
+drop aggregate if exists group_and_last;
+drop function if exists state_group_f;
+
+
+create table if not exists values (
+  book text,
+  anchor text,
+  tradeid text,
+  ref int,
+  metric text,
+  value double,
+  PRIMARY KEY((book,anchor), ref, metric, tradeid)
+  ) WITH CLUSTERING ORDER BY (ref ASC);
+
+
+
+truncate values;
+
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade1', 1, 'delta', 42.0);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade2', 2, 'delta', 17.0);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade1', 3, 'delta', 42.5);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade2', 4, 'delta', 17.5);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade1', 5, 'delta', 43.0);  
+
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade1', 1, 'vega', 2.0);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade2', 2, 'vega', 7.0);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade1', 3, 'vega', 2.5);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade2', 4, 'vega', 7.5);  
+insert into values (book, anchor, tradeid, ref, metric, value) VALUES ('bookA', '2001-01-01', 'trade1', 5, 'vega', 3.0);  
+
+
+
+CREATE FUNCTION state_group_f ( state map<text, double>, key text, value double )
+CALLED ON NULL INPUT
+RETURNS map<text, double>
+LANGUAGE java AS '
+state.put(key, value); return state; ' ;
+
+CREATE OR REPLACE AGGREGATE group_and_last(text, double) 
+SFUNC state_group_f
+STYPE map<text, double> 
+INITCOND {};
+
+
+
+select * from values;
+
+
+-- select * from values where book='bookA' and anchor='2001-01-01' and metric='vega' and ref <= 3;
+select group_and_last(tradeid, value) from values where book='bookA' and anchor='2001-01-01'  and ref<=3 and metric='vega' ALLOW FILTERING;
+
+
